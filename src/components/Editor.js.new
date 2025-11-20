@@ -1,0 +1,181 @@
+import React, { useState, useRef } from 'react';
+import Editor from '@monaco-editor/react';
+import {
+  Box,
+  Button,
+  Container,
+  Paper,
+  Typography,
+  Snackbar,
+  Alert
+} from '@mui/material';
+import PlayArrowIcon from '@mui/icons-material/PlayArrow';
+
+const SimpleEditor = () => {
+  // State
+  const [output, setOutput] = useState('');
+  const [error, setError] = useState(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [notification, setNotification] = useState({
+    open: false,
+    message: '',
+    severity: 'info'
+  });
+
+  // Editor reference
+  const editorRef = useRef(null);
+
+  // Handle editor mount
+  const handleMount = (editor) => {
+    editorRef.current = editor;
+    // Set initial code
+    editor.setValue('# Python Code Editor\nprint("Hello, World!")');
+  };
+
+  // Handle code execution
+  const handleRunCode = async () => {
+    if (!editorRef.current) {
+      setNotification({
+        open: true,
+        message: 'Editor is not ready. Please wait a moment.',
+        severity: 'warning'
+      });
+      return;
+    }
+
+    try {
+      const code = editorRef.current.getValue();
+      
+      setIsLoading(true);
+      setError(null);
+      setOutput('Running...');
+
+      const response = await fetch('http://localhost:3001/api/execute', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          code,
+          language: 'python',
+          input: ''
+        })
+      });
+
+      const data = await response.json();
+
+      if (data.error) {
+        setError(data.error);
+        setOutput('');
+      } else {
+        setOutput(data.output || 'No output');
+        setError(null);
+      }
+    } catch (err) {
+      setError(err.message);
+      setOutput('');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  return (
+    <Container maxWidth="xl" sx={{ mt: 4, mb: 4 }}>
+      <Paper 
+        elevation={3} 
+        sx={{ 
+          p: 2,
+          backgroundColor: '#1e1e1e',
+          borderRadius: 2,
+          overflow: 'hidden'
+        }}
+      >
+        {/* Editor Header */}
+        <Box sx={{ 
+          display: 'flex', 
+          justifyContent: 'space-between', 
+          alignItems: 'center',
+          mb: 2
+        }}>
+          <Typography variant="h6" sx={{ color: 'white' }}>
+            Python Code Editor
+          </Typography>
+          <Button
+            variant="contained"
+            color="primary"
+            onClick={handleRunCode}
+            disabled={isLoading}
+            startIcon={<PlayArrowIcon />}
+          >
+            Run Code
+          </Button>
+        </Box>
+
+        {/* Editor */}
+        <Box sx={{ 
+          height: '400px',
+          border: '1px solid #333',
+          borderRadius: 1,
+          overflow: 'hidden'
+        }}>
+          <Editor
+            height="100%"
+            defaultLanguage="python"
+            theme="vs-dark"
+            onMount={handleMount}
+            options={{
+              fontSize: 14,
+              minimap: { enabled: false },
+              scrollBeyondLastLine: false,
+              wordWrap: 'on',
+              padding: { top: 8 },
+              lineNumbers: 'on'
+            }}
+          />
+        </Box>
+
+        {/* Output */}
+        <Paper 
+          sx={{ 
+            mt: 2,
+            p: 2,
+            backgroundColor: '#2d2d2d',
+            color: error ? '#ff6b6b' : '#a3ff78',
+            fontFamily: 'monospace',
+            minHeight: '100px',
+            maxHeight: '200px',
+            overflow: 'auto'
+          }}
+        >
+          <Typography
+            component="pre"
+            sx={{
+              margin: 0,
+              whiteSpace: 'pre-wrap',
+              wordBreak: 'break-word'
+            }}
+          >
+            {error || output || 'Code output will appear here...'}
+          </Typography>
+        </Paper>
+      </Paper>
+
+      {/* Notifications */}
+      <Snackbar
+        open={notification.open}
+        autoHideDuration={6000}
+        onClose={() => setNotification({ ...notification, open: false })}
+      >
+        <Alert
+          onClose={() => setNotification({ ...notification, open: false })}
+          severity={notification.severity}
+          sx={{ width: '100%' }}
+        >
+          {notification.message}
+        </Alert>
+      </Snackbar>
+    </Container>
+  );
+};
+
+export default SimpleEditor;

@@ -1,0 +1,494 @@
+import React, { useEffect, useState, useCallback, useRef } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
+import Editor from '@monaco-editor/react';
+import * as Y from 'yjs';
+import { WebsocketProvider } from 'y-websocket';
+import { MonacoBinding } from 'y-monaco';
+import {
+    AppBar, Toolbar, Typography, Button, Drawer, List, ListItem,
+    ListItemIcon, ListItemText, TextField, IconButton, Select, MenuItem,
+    FormControl, Snackbar, Alert, Box, Paper, CircularProgress,
+    Tooltip, Divider, useTheme, Stack
+} from '@mui/material';
+import MenuIcon from '@mui/icons-material/Menu';
+import PeopleIcon from '@mui/icons-material/People';
+import PlayArrowIcon from '@mui/icons-material/PlayArrow';
+import SettingsIcon from '@mui/icons-material/Settings';
+import ContentCopyIcon from '@mui/icons-material/ContentCopy';
+import DarkModeIcon from '@mui/icons-material/DarkMode';
+import LightModeIcon from '@mui/icons-material/LightMode';
+import ExitToAppIcon from '@mui/icons-material/ExitToApp';
+import { auth } from '../firebase-config';
+import { signOut } from 'firebase/auth';
+import axios from 'axios';
+import { ThemeProvider } from '@mui/material/styles';
+import { languageOptions, themeOptions, defaultSettings, serverConfig } from '../config/editorConfig';
+import { lightTheme, darkTheme } from '../theme/theme';
+
+const LoadingScreen = () => (
+    <Box
+        sx={{
+            height: '100vh',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 2,
+            bgcolor: 'background.default'
+        }}
+    >
+        <CircularProgress size={40} />
+        <Typography variant="h6" color="text.primary">
+            Initializing Editor...
+        </Typography>
+    </Box>
+);
+
+const CollaborativeEditor = ({ isNew }) => {
+    const { id: documentId } = useParams();
+    const navigate = useNavigate();
+    const [drawerOpen, setDrawerOpen] = useState(false);
+    const [language, setLanguage] = useState('python');
+    const [input, setInput] = useState('');
+    const [output, setOutput] = useState('');
+    const [error, setError] = useState(null);
+    const [isLoading, setIsLoading] = useState(true);
+    const [theme, setTheme] = useState('vs-dark');
+    const [users, setUsers] = useState([]);
+    const [editorSettings, setEditorSettings] = useState(defaultSettings);
+    const [isExecuting, setIsExecuting] = useState(false);
+    const [showSettings, setShowSettings] = useState(false);
+    const [notification, setNotification] = useState({ show: false, message: '', severity: 'info' });
+    const [currentDocument, setCurrentDocument] = useState({ title: 'Untitled', lastSaved: null });
+    
+    // References
+    const editorRef = useRef(null);
+    const ydoc = useRef(null);
+    const provider = useRef(null);
+    const binding = useRef(null);
+
+    const muiTheme = useTheme();
+    const isLight = theme === 'vs-light' || theme === 'light';
+
+    // Redirect if isNew
+    useEffect(() => {
+        if (isNew) {
+            const newDocId = 'doc-' + Math.random().toString(36).substr(2, 9);
+            navigate(`/documents/${newDocId}`, { replace: true });
+        }
+    }, [isNew, navigate]);
+
+    // Initialize collaboration
+    useEffect(() => {
+        let cleanup = () => {};
+
+        const initCollaboration = async () => {
+            if (!documentId) {
+                setIsLoading(false);
+                return;
+            }
+
+            let currentDoc = null;
+            let currentProvider = null;
+
+            try {
+                currentDoc = new Y.Doc();
+                currentProvider = new WebsocketProvider(
+                    serverConfig.wsUrl,
+                    documentId,
+                    currentDoc,
+                    { connect: true }
+                );
+
+                // Save references
+                ydoc.current = currentDoc;
+                provider.current = currentProvider;
+
+                // Set up awareness state
+                const userName = auth.currentUser?.displayName || 'Anonymous';
+                const userColor = `#${Math.floor(Math.random()*16777215).toString(16)}`;
+                
+                currentProvider.awareness.setLocalState({
+                    user: {
+                        name: userName,
+                        color: userColor
+                    }
+                });
+
+                // Handle awareness updates
+                currentProvider.awareness.on('change', () => {
+                    const states = Array.from(currentProvider.awareness.getStates().values());
+                    const connectedUsers = states
+                        .filter(state => state.user)
+                        .map(state => ({
+                            name: state.user.name,
+                            color: state.user.color
+                        }));
+                    setUsers(connectedUsers);
+                });
+
+                // Handle connection status
+                currentProvider.on('status', ({ status }) => {
+                    console.log('WebSocket status:', status);
+                    if (status === 'connected') {
+                        setNotification({
+                            show: true,
+                            message: 'Connected to collaboration server',
+                            severity: 'success'
+                        });
+                        setIsLoading(false);
+                    } else {
+                        setNotification({
+                            show: true,
+                            message: 'Connection lost. Trying to reconnect...',
+                            severity: 'warning'
+                        });
+                    }
+                });
+
+                // Handle errors
+                currentProvider.on('error', (error) => {
+                    console.error('WebSocket error:', error);
+                    setNotification({
+                        show: true,
+                        message: 'Connection error. Please refresh the page.',
+                        severity: 'error'
+                    });
+                    setIsLoading(false);
+                });
+
+                cleanup = () => {
+                    console.log('Cleaning up collaboration resources...');
+                    try {
+                        if (binding.current) {
+                            binding.current.destroy();
+                            binding.current = null;
+                        }
+                        if (currentProvider) {
+                            currentProvider.destroy();
+                            provider.current = null;
+                        }
+                        if (currentDoc) {
+                            currentDoc.destroy();
+                            ydoc.current = null;
+                        }
+                    } catch (error) {
+                        console.error('Error during cleanup:', error);
+                    }
+                };
+
+            } catch (error) {
+                console.error('Failed to initialize collaboration:', error);
+                setNotification({
+                    show: true,
+                    message: 'Failed to initialize collaborative editing',
+                    severity: 'error'
+                });
+                setIsLoading(false);
+            }
+        };
+
+        initCollaboration();
+        return () => cleanup();
+    }, [documentId]);
+
+    // Handle editor mount
+    const handleEditorMount = useCallback(async (editor, monaco) => {
+        if (!editor) return;
+        
+        try {
+            editorRef.current = editor;
+            
+            // Set up editor preferences
+            editor.getModel().updateOptions({
+                tabSize: editorSettings.tabSize,
+                insertSpaces: true,
+            });
+
+            editor.updateOptions({
+                fontSize: editorSettings.fontSize,
+                minimap: { enabled: editorSettings.minimap },
+                wordWrap: editorSettings.wordWrap,
+                lineNumbers: editorSettings.lineNumbers ? 'on' : 'off',
+            });
+
+            // Initialize collaboration
+            if (documentId && ydoc.current && provider.current) {
+                const ytext = ydoc.current.getText('monaco');
+                binding.current = new MonacoBinding(
+                    ytext,
+                    editor.getModel(),
+                    new Set([editor]),
+                    provider.current.awareness
+                );
+            }
+        } catch (error) {
+            console.error('Failed to initialize editor:', error);
+            setNotification({
+                show: true,
+                message: 'Failed to initialize editor',
+                severity: 'error'
+            });
+        }
+    }, [documentId, editorSettings]);
+
+    // Execute code
+    const handleExecuteCode = async () => {
+        try {
+            setIsExecuting(true);
+            setOutput('');
+            setError(null);
+            
+            const code = editorRef.current.getValue();
+            if (!code.trim()) {
+                setNotification({
+                    show: true,
+                    message: 'Please enter some code to execute',
+                    severity: 'warning'
+                });
+                return;
+            }
+
+            const response = await axios.post(`${serverConfig.baseUrl}/api/execute`, {
+                code,
+                language,
+                input
+            });
+
+            const result = response.data;
+            
+            if (result.compile?.stderr) {
+                setError(`Compilation Error: ${result.compile.stderr}`);
+                return;
+            }
+
+            if (result.run) {
+                let output = '';
+                if (result.run.stdout) output += result.run.stdout;
+                if (result.run.stderr) output += `\nError: ${result.run.stderr}`;
+                setOutput(output.trim());
+                
+                if (result.run.code !== 0) {
+                    setNotification({
+                        show: true,
+                        message: 'Program exited with non-zero status',
+                        severity: 'warning'
+                    });
+                }
+            }
+        } catch (err) {
+            console.error('Execution error:', err);
+            setError(err.response?.data?.error || 'Failed to execute code');
+            setNotification({
+                show: true,
+                message: 'Failed to execute code. Please try again.',
+                severity: 'error'
+            });
+        } finally {
+            setIsExecuting(false);
+        }
+    };
+
+    const handleLogout = async () => {
+        try {
+            await signOut(auth);
+            navigate('/login');
+        } catch (error) {
+            console.error('Error signing out:', error);
+            setNotification({
+                show: true,
+                message: 'Failed to sign out',
+                severity: 'error'
+            });
+        }
+    };
+
+    if (isLoading) {
+        return <LoadingScreen />;
+    }
+
+    return (
+        <ThemeProvider theme={isLight ? lightTheme : darkTheme}>
+            <Box sx={{ display: 'flex', height: '100vh' }}>
+                <AppBar position="fixed">
+                    <Toolbar>
+                        <IconButton
+                            edge="start"
+                            color="inherit"
+                            onClick={() => setDrawerOpen(true)}
+                            sx={{ mr: 2 }}
+                        >
+                            <MenuIcon />
+                        </IconButton>
+
+                        <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
+                            {currentDocument.title}
+                        </Typography>
+
+                        <Stack direction="row" spacing={1}>
+                            <Button
+                                color="inherit"
+                                startIcon={theme === 'vs-dark' ? <LightModeIcon /> : <DarkModeIcon />}
+                                onClick={() => setTheme(prev => prev === 'vs-dark' ? 'light' : 'vs-dark')}
+                            >
+                                {theme === 'vs-dark' ? 'Light' : 'Dark'} Mode
+                            </Button>
+                            
+                            <Button
+                                color="inherit"
+                                onClick={handleLogout}
+                                startIcon={<ExitToAppIcon />}
+                            >
+                                Logout
+                            </Button>
+                        </Stack>
+                    </Toolbar>
+                </AppBar>
+
+                <Drawer
+                    anchor="left"
+                    open={drawerOpen}
+                    onClose={() => setDrawerOpen(false)}
+                >
+                    <List sx={{ width: 250 }}>
+                        <ListItem>
+                            <ListItemIcon>
+                                <PeopleIcon />
+                            </ListItemIcon>
+                            <ListItemText 
+                                primary="Connected Users" 
+                                primaryTypographyProps={{ fontWeight: 600 }}
+                            />
+                        </ListItem>
+                        {users.map((user, index) => (
+                            <ListItem key={index}>
+                                <Box
+                                    sx={{
+                                        width: 8,
+                                        height: 8,
+                                        borderRadius: '50%',
+                                        bgcolor: user.color,
+                                        mr: 2
+                                    }}
+                                />
+                                <ListItemText primary={user.name} />
+                            </ListItem>
+                        ))}
+                    </List>
+                </Drawer>
+
+                <Box sx={{ display: 'flex', flexGrow: 1, p: 2, gap: 2, mt: 8 }}>
+                    <Paper 
+                        elevation={0} 
+                        sx={{ 
+                            flexGrow: 1,
+                            display: 'flex',
+                            flexDirection: 'column',
+                            borderRadius: 1,
+                            border: 1,
+                            borderColor: 'divider',
+                            overflow: 'hidden'
+                        }}
+                    >
+                        <Editor
+                            height="100%"
+                            defaultLanguage={language}
+                            defaultValue="// Start coding here\n\n"
+                            theme={theme}
+                            onMount={handleEditorMount}
+                            loading={<CircularProgress />}
+                            options={{
+                                readOnly: !documentId,
+                                automaticLayout: true,
+                                fontSize: editorSettings.fontSize,
+                                minimap: { enabled: editorSettings.minimap },
+                                wordWrap: editorSettings.wordWrap,
+                                lineNumbers: editorSettings.lineNumbers ? 'on' : 'off',
+                                tabSize: editorSettings.tabSize,
+                                insertSpaces: true,
+                                scrollBeyondLastLine: false,
+                                theme: theme
+                            }}
+                        />
+                    </Paper>
+
+                    <Paper 
+                        elevation={0}
+                        sx={{ 
+                            width: '30%',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: 2,
+                            p: 2,
+                            borderRadius: 1,
+                            border: 1,
+                            borderColor: 'divider'
+                        }}
+                    >
+                        <FormControl fullWidth>
+                            <Select
+                                value={language}
+                                onChange={(e) => setLanguage(e.target.value)}
+                                variant="outlined"
+                            >
+                                {languageOptions.map((lang) => (
+                                    <MenuItem key={lang.value} value={lang.value}>
+                                        {lang.icon} {lang.label}
+                                    </MenuItem>
+                                ))}
+                            </Select>
+                        </FormControl>
+
+                        <TextField
+                            multiline
+                            rows={4}
+                            variant="outlined"
+                            label="Input"
+                            value={input}
+                            onChange={(e) => setInput(e.target.value)}
+                            sx={{ bgcolor: 'background.paper' }}
+                        />
+
+                        <Button
+                            variant="contained"
+                            color="primary"
+                            onClick={handleExecuteCode}
+                            disabled={isExecuting}
+                            startIcon={<PlayArrowIcon />}
+                        >
+                            {isExecuting ? 'Executing...' : 'Run Code'}
+                        </Button>
+
+                        <TextField
+                            multiline
+                            rows={8}
+                            variant="outlined"
+                            label="Output"
+                            value={error || output}
+                            InputProps={{
+                                readOnly: true
+                            }}
+                            sx={{ bgcolor: 'background.paper' }}
+                        />
+                    </Paper>
+                </Box>
+
+                <Snackbar
+                    open={notification.show}
+                    autoHideDuration={6000}
+                    onClose={() => setNotification(prev => ({ ...prev, show: false }))}
+                >
+                    <Alert 
+                        onClose={() => setNotification(prev => ({ ...prev, show: false }))} 
+                        severity={notification.severity}
+                        sx={{ width: '100%' }}
+                    >
+                        {notification.message}
+                    </Alert>
+                </Snackbar>
+            </Box>
+        </ThemeProvider>
+    );
+};
+
+export default CollaborativeEditor;

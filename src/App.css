@@ -1,38 +1,316 @@
-.App {
-  text-align: center;
+/* General Styles */
+body {
+    margin: 0;
+    font-family: 'Roboto', sans-serif;
+    background-color: #1e1e1e;
+    color: #e0e0e0;
 }
 
-.App-logo {
-  height: 40vmin;
-  pointer-events: none;
+#root {
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
 }
 
-@media (prefers-reduced-motion: no-preference) {
-  .App-logo {
-    animation: App-logo-spin infinite 20s linear;
-  }
+/* Vibrant Color Palette */
+:root {
+    --primary-color: #8e44ad;
+    --secondary-color: #3498db;
+    --accent-color: #e74c3c;
+    --background-color: #1e1e1e;
+    --text-color: #ecf0f1;
 }
 
-.App-header {
-  background-color: #282c34;
-  min-height: 100vh;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  font-size: calc(10px + 2vmin);
-  color: white;
+/* Home Page Styles */
+.home-container {
+    background: linear-gradient(45deg, var(--primary-color) 30%, var(--secondary-color) 90%);
+    color: white;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 20px;
 }
 
-.App-link {
-  color: #61dafb;
+.home-hero {
+    background-color: rgba(255, 255, 255, 0.1);
+    padding: 50px 30px;
+    border-radius: 20px;
+    box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
+    backdrop-filter: blur(5px);
+    -webkit-backdrop-filter: blur(5px);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    margin-bottom: 40px;
+    max-width: 900px;
+    width: 100%;
 }
 
-@keyframes App-logo-spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
+.home-heading {
+    font-size: 4.5em;
+    color: white;
+    margin-bottom: 20px;
+    font-weight: 700;
+    text-shadow: 3px 3px 6px rgba(0,0,0,0.4);
+}
+
+.home-subheading {
+    font-size: 1.6em;
+    color: #f5f5f5;
+    margin-bottom: 40px;
+    line-height: 1.7;
+}
+
+.home-button {
+    background-color: var(--accent-color);
+    color: white;
+    padding: 18px 40px;
+    font-size: 1.3em;
+    border-radius: 50px;
+    text-decoration: none;
+    transition: all 0.4s ease;
+    box-shadow: 0 5px 20px rgba(0, 0, 0, 0.25);
+}
+
+.home-button:hover {
+    background-color: #c0392b;
+    transform: translateY(-5px);
+    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.35);
+}
+
+/* Authentication Forms */
+.auth-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    background: linear-gradient(45deg, #121212 30%, #1e1e1e 90%);
+    color: white;
+}
+
+.auth-form {
+    display: flex;
+    flex-direction: column;
+    width: 340px;
+    padding: 40px;
+    border-radius: 20px;
+    box-shadow: 0 10px 40px 0 rgba(0, 0, 0, 0.4);
+    background-color: rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(5px);
+    -webkit-backdrop-filter: blur(5px);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+}
+
+.auth-form h2 {
+    margin-bottom: 30px;
+    color: var(--secondary-color);
+    text-align: center;
+    font-size: 2em;
+}
+
+.auth-form input {
+    padding: 15px;
+    margin-bottom: 25px;
+    border-radius: 10px;
+    border: 1px solid #555;
+    background-color: rgba(0,0,0,0.4);
+    color: white;
+    font-size: 1.1em;
+}
+
+.auth-form input::placeholder {
+    color: #bbb;
+}
+
+.auth-form button {
+    padding: 15px 20px;
+    border-radius: 10px;
+    border: none;
+    background-color: var(--secondary-color);
+    color: white;
+    font-size: 1.2em;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.auth-form button:hover {
+    background-color: #2980b9;
+    transform: translateY(-3px);
+}
+
+.auth-form .error {
+    color: var(--accent-color);
+    margin-top: 15px;
+    text-align: center;
+}
+
+/* Editor Layout */
+.editor-layout {
+    display: flex;
+    flex-grow: 1;
+    background-color: var(--background-color);
+}
+
+.editor-main {
+    flex-grow: 1;
+    display: flex;
+    flex-direction: column;
+}
+
+.editor-sidebar {
+    width: 320px;
+    background-color: #2c2c2c;
+    border-left: 1px solid #444;
+    display: flex;
+    flex-direction: column;
+}
+
+/* Quill Editor Styles */
+.ql-toolbar.ql-snow {
+    display: flex;
+    justify-content: center;
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background-color: #2c2c2c;
+    border-bottom: 1px solid #444;
+    color: var(--text-color);
+}
+
+.ql-container.ql-snow {
+    flex-grow: 1;
+    border: none;
+    background-color: var(--background-color);
+    color: var(--text-color);
+}
+
+.ql-editor {
+    width: 8.5in;
+    min-height: 11in;
+    padding: 1in;
+    margin: 1rem auto;
+    box-shadow: 0 0 15px 0 rgba(0, 0, 0, 0.6);
+    background-color: #282828;
+    color: var(--text-color);
+    line-height: 1.6;
+}
+
+.ql-snow .ql-stroke {
+    stroke: var(--text-color);
+}
+.ql-snow .ql-fill {
+    fill: var(--text-color);
+}
+.ql-snow .ql-picker {
+    color: var(--text-color);
+}
+.ql-snow .ql-picker.ql-expanded .ql-picker-options {
+    background-color: #2c2c2c;
+    border: 1px solid #444;
+}
+.ql-snow .ql-picker-item.ql-selected, .ql-snow .ql-picker-item:hover {
+    background-color: #444;
+    color: var(--secondary-color);
+}
+.ql-snow .ql-tooltip {
+    background-color: #2c2c2c;
+    color: var(--text-color);
+    border: 1px solid #444;
+}
+.ql-snow .ql-tooltip a {
+    color: var(--secondary-color);
+}
+.ql-snow .ql-tooltip input {
+    background-color: #282828;
+    color: var(--text-color);
+    border: 1px solid #555;
+}
+
+/* Chat Component */
+.chat-container {
+    flex-grow: 1;
+    padding: 15px;
+    overflow-y: auto;
+    border-top: 1px solid #444;
+}
+
+.chat-message {
+    margin-bottom: 12px;
+}
+
+.chat-message strong {
+    color: var(--secondary-color);
+}
+
+.chat-input-container {
+    padding: 15px;
+    border-top: 1px solid #444;
+    display: flex;
+}
+
+.chat-input-container input {
+    flex-grow: 1;
+    padding: 10px;
+    border-radius: 8px;
+    border: 1px solid #555;
+    background-color: #4a4f57;
+    color: white;
+    margin-right: 12px;
+}
+
+.chat-input-container button {
+    background-color: var(--secondary-color);
+    color: white;
+    border: none;
+    padding: 10px 18px;
+    border-radius: 8px;
+    cursor: pointer;
+}
+
+/* User List */
+.user-list-container {
+    padding: 15px;
+    border-bottom: 1px solid #444;
+}
+
+.user-list-container h3 {
+    color: var(--secondary-color);
+    margin-bottom: 12px;
+}
+
+.user-list-container ul {
+    list-style: none;
+    padding: 0;
+}
+
+.user-list-container li {
+    margin-bottom: 6px;
+    color: var(--text-color);
+}
+
+@media print {
+    body {
+        background: none;
+    }
+
+    .editor-layout, .editor-main, .editor-sidebar {
+        flex-direction: column;
+        width: 100%;
+    }
+
+    .ql-toolbar.ql-snow,
+    .editor-sidebar {
+        display: none;
+    }
+
+    .ql-editor {
+        width: 6.5in;
+        height: 9in;
+        padding: 0;
+        margin: 0;
+        box-shadow: none;
+        align-self: flex-start;
+    }
 }

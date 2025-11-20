@@ -1,0 +1,738 @@
+import React, { useEffect, useState, useCallback, useRef } from 'react';
+import { useParams } from 'react-router-dom';
+import Editor from '@monaco-editor/react';
+import * as Y from 'yjs';
+import { WebsocketProvider } from 'y-websocket';
+import { MonacoBinding } from 'y-monaco';
+import {
+  AppBar,
+  Toolbar,
+  Typography,
+  Button,
+  Drawer,
+  List,
+  ListItem,
+  ListItemIcon,
+  ListItemText,
+  TextField,
+  Paper,
+  Grid,
+  IconButton,
+  Select,
+  MenuItem,
+  InputLabel,
+  FormControl,
+  Snackbar,
+  Alert,
+  Box,
+  Fade,
+  Zoom,
+  Chip,
+  useTheme,
+} from '@mui/material';
+import { styled } from '@mui/system';
+import MenuIcon from '@mui/icons-material/Menu';
+import PeopleIcon from '@mui/icons-material/People';
+import ChatIcon from '@mui/icons-material/Chat';
+import CodeIcon from '@mui/icons-material/Code';
+import ExitToAppIcon from '@mui/icons-material/ExitToApp';
+import PlayArrowIcon from '@mui/icons-material/PlayArrow';
+import { auth } from '../firebase-config';
+import { signOut } from 'firebase/auth';
+import { useNavigate } from 'react-router-dom';
+import axios from 'axios';
+import LoadingAnimation from './shared/LoadingAnimation';
+import AnimatedButton from './shared/AnimatedButton';
+import { fadeIn, slideUp, slideDown } from './shared/animations';
+
+const SAVE_INTERVAL_MS = 2000;
+
+const StyledAppBar = styled(AppBar)(({ theme }) => ({
+  backgroundImage: 'linear-gradient(135deg, rgba(45, 45, 59, 0.95) 0%, rgba(45, 45, 59, 0.98) 100%)',
+  backdropFilter: 'blur(10px)',
+  borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
+}));
+
+const StyledPaper = styled(Paper)(({ theme }) => ({
+  backgroundImage: 'linear-gradient(135deg, rgba(45, 45, 59, 0.6) 0%, rgba(45, 45, 59, 0.9) 100%)',
+  backdropFilter: 'blur(10px)',
+  border: '1px solid rgba(255, 255, 255, 0.1)',
+  borderRadius: theme.shape.borderRadius,
+  transition: 'all 0.3s ease-in-out',
+  '&:hover': {
+    boxShadow: theme.shadows[8],
+  },
+}));
+
+const StyledDrawer = styled(Drawer)(({ theme }) => ({
+  '& .MuiDrawer-paper': {
+    backgroundImage: 'linear-gradient(135deg, rgba(45, 45, 59, 0.95) 0%, rgba(45, 45, 59, 0.98) 100%)',
+    backdropFilter: 'blur(10px)',
+    borderRight: '1px solid rgba(255, 255, 255, 0.1)',
+  },
+}));
+
+const AnimatedSelect = styled(Select)(({ theme }) => ({
+  transition: 'all 0.3s ease-in-out',
+  '&:hover': {
+    transform: 'translateY(-2px)',
+  },
+}));
+
+const AnimatedTextField = styled(TextField)(({ theme }) => ({
+  '& .MuiOutlinedInput-root': {
+    transition: 'all 0.3s ease-in-out',
+    backdropFilter: 'blur(10px)',
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    '&:hover': {
+      transform: 'translateY(-2px)',
+      '& fieldset': {
+        borderColor: theme.palette.primary.main,
+      },
+    },
+  },
+}));
+
+const OutputBox = styled(Paper)(({ theme, error }) => ({
+  padding: theme.spacing(2),
+  flexGrow: 1,
+  fontFamily: 'monospace',
+  whiteSpace: 'pre-wrap',
+  overflow: 'auto',
+  backgroundColor: error ? 'rgba(211, 47, 47, 0.1)' : 'rgba(46, 125, 50, 0.1)',
+  border: `1px solid ${error ? 'rgba(211, 47, 47, 0.3)' : 'rgba(46, 125, 50, 0.3)'}`,
+  borderRadius: theme.shape.borderRadius,
+  transition: 'all 0.3s ease-in-out',
+}));
+
+const CodeEditor = () => {
+  const { id: documentId } = useParams();
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [users, setUsers] = useState([]);
+  const navigate = useNavigate();
+  const [language, setLanguage] = useState('python');
+  const [output, setOutput] = useState('');
+  const [input, setInput] = useState('');
+  const [error, setError] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isEditorReady, setIsEditorReady] = useState(false);
+  const editorRef = useRef(null);
+  const [theme, setTheme] = useState('vs-dark');
+  const [notification, setNotification] = useState({ show: false, message: '', severity: 'info' });
+  const muiTheme = useTheme();
+  
+  // YJS configuration
+  const ydoc = useRef(null);
+  const provider = useRef(null);
+  const binding = useRef(null);
+
+    // Initialize YJS and Monaco Editor
+    useEffect(() => {
+        if (!documentId) return;
+
+        let retryCount = 0;
+        const maxRetries = 3;
+        
+        const initializeConnection = () => {
+            try {
+                // Initialize YJS document
+                if (!ydoc.current) {
+                    ydoc.current = new Y.Doc();
+                }
+                
+                const websocketUrl = 'ws://localhost:3001';
+                if (provider.current) {
+                    provider.current.destroy();
+                }
+                
+                provider.current = new WebsocketProvider(websocketUrl, documentId, ydoc.current);
+
+                // Handle connection status
+                provider.current.on('status', event => {
+                    console.log('WebSocket connection status:', event.status);
+                    if (event.status === 'connected') {
+                        setError(null);
+                        setIsEditorReady(true);
+                        setNotification({
+                            show: true,
+                            message: 'Connected to collaboration server',
+                            severity: 'success'
+                        });
+                    } else {
+                        setIsEditorReady(false);
+                        if (retryCount < maxRetries) {
+                            retryCount++;
+                            setTimeout(() => {
+                                console.log(`Retrying connection (${retryCount}/${maxRetries})...`);
+                                initializeConnection();
+                            }, 2000); // Retry after 2 seconds
+                        }
+                        setNotification({
+                            show: true,
+                            message: `Connection lost. ${retryCount < maxRetries ? 'Retrying...' : 'Please refresh the page.'}`,
+                            severity: 'warning'
+                        });
+                    }
+                });
+
+                provider.current.on('error', (err) => {
+                    console.error('WebSocket error:', err);
+                    setIsEditorReady(false);
+                    setNotification({
+                        show: true,
+                        message: 'Connection error. Please check your internet connection.',
+                        severity: 'error'
+                    });
+                });
+
+            } catch (err) {
+                console.error('Connection initialization error:', err);
+                setIsEditorReady(false);
+                setNotification({
+                    show: true,
+                    message: 'Failed to initialize connection. Please refresh the page.',
+                    severity: 'error'
+                });
+            }
+        };
+
+        initializeConnection();
+
+        // Cleanup function
+        return () => {
+            if (provider.current) {
+                provider.current.destroy();
+            }
+            if (ydoc.current) {
+                ydoc.current.destroy();
+            }
+        };
+        });
+
+        // Cleanup
+        return () => {
+            if (binding.current) {
+                binding.current.destroy();
+            }
+            if (provider.current) {
+                provider.current.destroy();
+            }
+            if (ydoc.current) {
+                ydoc.current.destroy();
+            }
+        };
+    }, [documentId]);
+
+    // Handle Monaco Editor mount
+    const handleEditorMount = useCallback((editor, monaco) => {
+        console.log('Editor mount started');
+        
+        if (!editor) {
+            console.error('Editor instance is null');
+            return;
+        }
+
+        // Store the editor instance globally and in state
+        window.editor = editor; // Global reference for debugging
+        editorRef.current = editor;
+
+        // Create a new model if one doesn't exist
+        if (!editor.getModel()) {
+            const model = monaco.editor.createModel('', language);
+            editor.setModel(model);
+        }
+
+        // Set some basic editor options
+        editor.updateOptions({
+            tabSize: 4,
+            fontSize: 14,
+            minimap: { enabled: false },
+            scrollBeyondLastLine: false,
+            automaticLayout: true
+        });
+
+        // Initialize with some default content
+        if (!editor.getValue()) {
+            editor.setValue('// Start coding here\n');
+        }
+
+        setIsLoading(false);
+        setIsEditorReady(true);
+        
+        // Try to initialize YJS binding if we have a connection
+        if (ydoc.current && provider.current) {
+            try {
+                const ytext = ydoc.current.getText('monaco');
+                binding.current = new MonacoBinding(
+                    ytext,
+                    editor.getModel(),
+                    new Set([editor]),
+                    provider.current.awareness
+                );
+            } catch (err) {
+                console.error('YJS binding error:', err);
+                // Non-critical error, don't show to user
+            }
+        }
+    }, [language]);
+
+    // Handle code execution
+    const handleExecuteCode = async () => {
+        try {
+            // Get the editor value directly from the DOM
+            const editor = document.querySelector('.monaco-editor');
+            if (!editor) {
+                setNotification({
+                    show: true,
+                    message: 'Please type some code first',
+                    severity: 'info'
+                });
+                return;
+            }
+
+            const textArea = editor.querySelector('textarea');
+            if (!textArea) {
+                setNotification({
+                    show: true,
+                    message: 'Editor is still loading',
+                    severity: 'info'
+                });
+                return;
+            }
+
+            const code = textArea.value.trim();
+            
+            if (!code) {
+                setNotification({
+                    show: true,
+                    message: 'Please enter some code first.',
+                    severity: 'info'
+                });
+                return;
+            }
+
+            setIsLoading(true);
+            setError(null);
+            setOutput('Running your code...');
+
+            // Directly call the execute endpoint
+            const response = await fetch('http://localhost:3001/api/execute', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    code,
+                    language: 'python',
+                    input: input
+                })
+            });
+
+            const data = await response.json();
+
+            if (data.error) {
+                setError(data.error);
+                setOutput('');
+                setNotification({
+                    show: true,
+                    message: data.error,
+                    severity: 'error'
+                });
+            } else {
+                setError(null);
+                setOutput(data.output || 'No output');
+                if (data.output) {
+                    setNotification({
+                        show: true,
+                        message: 'Code executed successfully!',
+                        severity: 'success'
+                    });
+                }
+            }
+            if (!code.trim()) {
+                setNotification({
+                    show: true,
+                    message: 'Please enter some code to execute',
+                    severity: 'warning'
+                });
+                return;
+            }
+
+            setError(null);
+            setOutput('Executing...');
+
+            console.log('Executing code:', { code: code.slice(0, 100) + '...', language, input });
+            const response = await axios.post('http://localhost:3001/api/execute', {
+                code,
+                language,
+                input
+            });
+
+            const { success, output: executionOutput, error: executionError } = response.data;
+            
+            if (executionError) {
+                setError(executionError);
+                setOutput('');
+                setNotification({
+                    show: true,
+                    message: `Execution failed: ${executionError}`,
+                    severity: 'error'
+                });
+            } else {
+                setOutput(executionOutput || 'No output');
+                setError(null);
+                setNotification({
+                    show: true,
+                    message: 'Code executed successfully',
+                    severity: 'success'
+                });
+            }
+        } catch (err) {
+            console.error('Code execution error:', err);
+            const errorMessage = err.response?.data?.error || err.message || 'Failed to execute code';
+            setError(errorMessage);
+            setOutput('');
+            setNotification({
+                show: true,
+                message: errorMessage,
+                severity: 'error'
+            });
+        }
+    };
+
+    const handleLogout = async () => {
+        try {
+            await signOut(auth);
+            navigate('/login');
+        } catch (error) {
+            console.error('Error signing out:', error);
+            setNotification({
+                show: true,
+                message: 'Failed to sign out',
+                severity: 'error'
+            });
+        }
+    };
+
+  return (
+    <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', bgcolor: 'background.default' }}>
+      <StyledAppBar position="static">
+        <Toolbar>
+          <IconButton
+            edge="start"
+            color="inherit"
+            onClick={() => setDrawerOpen(true)}
+            sx={{
+              mr: 2,
+              transition: 'all 0.3s ease-in-out',
+              '&:hover': { transform: 'rotate(180deg)' },
+            }}
+          >
+            <MenuIcon />
+          </IconButton>
+          <Typography
+            variant="h6"
+            noWrap
+            sx={{
+              flexGrow: 1,
+              background: 'linear-gradient(45deg, #7c3aed 30%, #2dd4bf 90%)',
+              WebkitBackgroundClip: 'text',
+              WebkitTextFillColor: 'transparent',
+              fontWeight: 600,
+            }}
+          >
+            Collaborative Code Editor
+          </Typography>
+          <AnimatedButton
+            color="inherit"
+            onClick={handleLogout}
+            startIcon={<ExitToAppIcon />}
+            variant="outlined"
+            sx={{ borderWidth: 2 }}
+          >
+            Logout
+          </AnimatedButton>
+        </Toolbar>
+      </StyledAppBar>
+
+      <Grid container spacing={{ xs: 1, sm: 2 }} sx={{ p: { xs: 1, sm: 2 }, flexGrow: 1 }}>
+        <Grid item xs={12} md={9}>
+          <StyledPaper elevation={3} sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+            <Grid
+              container
+              spacing={{ xs: 1, sm: 2 }}
+              alignItems="center"
+              sx={{
+                p: { xs: 1, sm: 2 },
+                borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
+                animation: `${fadeIn} 0.8s ${muiTheme.transitions.easing.easeOut}`,
+                flexWrap: { xs: 'wrap', sm: 'nowrap' },
+              }}
+            >
+              <Grid item xs={12} sm={4} md={3}>
+                <FormControl fullWidth size="small">
+                  <InputLabel>Language</InputLabel>
+                  <AnimatedSelect
+                    value={language}
+                    onChange={(e) => setLanguage(e.target.value)}
+                    label="Language"
+                  >
+                    <MenuItem value="python">Python</MenuItem>
+                    <MenuItem value="javascript">JavaScript</MenuItem>
+                    <MenuItem value="java">Java</MenuItem>
+                    <MenuItem value="cpp">C++</MenuItem>
+                  </AnimatedSelect>
+                </FormControl>
+              </Grid>
+              <Grid
+                item
+                xs={6}
+                sm="auto"
+                sx={{
+                  order: { xs: 3, sm: 'unset' },
+                  mt: { xs: 1, sm: 0 },
+                }}
+              >
+                <AnimatedButton
+                  variant="contained"
+                  color="primary"
+                  onClick={handleExecuteCode}
+                  startIcon={<PlayArrowIcon />}
+                  fullWidth={false}
+                  sx={{
+                    minWidth: { xs: '100%', sm: 'auto' },
+                  }}
+                >
+                  Run Code
+                </AnimatedButton>
+              </Grid>
+              <Grid
+                item
+                xs={6}
+                sm="auto"
+                sx={{
+                  order: { xs: 3, sm: 'unset' },
+                  mt: { xs: 1, sm: 0 },
+                  display: 'flex',
+                  justifyContent: { xs: 'flex-end', sm: 'flex-start' },
+                }}
+              >
+                <Chip
+                  label={provider.current?.connected ? 'Connected' : 'Disconnected'}
+                  color={provider.current?.connected ? 'success' : 'error'}
+                  size="small"
+                  sx={{
+                    animation: `${fadeIn} 0.8s ${muiTheme.transitions.easing.easeOut}`,
+                    transition: 'all 0.3s ease-in-out',
+                  }}
+                />
+              </Grid>
+            </Grid>
+            <Box sx={{ flexGrow: 1, position: 'relative', minHeight: { xs: '300px', sm: '400px' } }}>
+              <Box 
+                sx={{ 
+                  height: '100%', 
+                  position: 'relative',
+                  overflow: 'hidden', // Prevent layout shifts
+                  display: 'flex',
+                  flexDirection: 'column',
+                }}
+              >
+                <div style={{ flex: 1, position: 'relative', minHeight: 0 }}>
+                  <Editor
+                    height="100%"
+                    defaultLanguage="python"
+                    defaultValue="# Start coding here\nprint('Hello World')"
+                    theme="vs-dark"
+                    loading={<LoadingAnimation />}
+                    options={{
+                      fontSize: 14,
+                      minimap: { enabled: false },
+                      scrollBeyondLastLine: false,
+                      automaticLayout: false, // Disable automatic layout
+                      wordWrap: 'on',
+                      padding: { top: 16 },
+                      fixedOverflowWidgets: true,
+                    }}
+                    onMount={(editor) => {
+                      // Store editor reference
+                      editorRef.current = editor;
+                      
+                      // Manual layout update
+                      const updateLayout = () => {
+                        if (editor) {
+                          editor.layout();
+                        }
+                      };
+
+                      // Add resize listener with debounce
+                      let timeoutId;
+                      const resizeObserver = new ResizeObserver(() => {
+                        if (timeoutId) {
+                          clearTimeout(timeoutId);
+                        }
+                        timeoutId = setTimeout(updateLayout, 100);
+                      });
+
+                      // Observe the editor's container
+                      const container = editor.getContainerDomNode();
+                      if (container) {
+                        resizeObserver.observe(container);
+                      }
+
+                      // Initial layout
+                      updateLayout();
+
+                      // Cleanup
+                      return () => {
+                        if (timeoutId) {
+                          clearTimeout(timeoutId);
+                        }
+                        resizeObserver.disconnect();
+                      };
+                    }}
+                  />
+                </div>
+              </Box>
+                {isLoading && (
+                  <Box
+                    sx={{
+                      position: 'absolute',
+                      top: 0,
+                      left: 0,
+                      right: 0,
+                      bottom: 0,
+                      backgroundColor: 'rgba(0,0,0,0.7)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      zIndex: 10,
+                    }}
+                  >
+                    <LoadingAnimation />
+                  </Box>
+                )}
+              </Box>
+            </Box>
+          </StyledPaper>
+        </Grid>
+        <Grid item xs={12} md={3}>
+          <StyledPaper
+            elevation={3}
+            sx={{
+              height: { xs: 'auto', md: '100%' },
+              display: 'flex',
+              flexDirection: 'column',
+              p: { xs: 1.5, sm: 2 },
+              animation: `${slideUp} 0.8s ${muiTheme.transitions.easing.easeOut}`,
+            }}
+          >
+            <Typography
+              variant="h6"
+              gutterBottom
+              sx={{
+                color: muiTheme.palette.primary.main,
+                fontWeight: 600,
+                fontSize: { xs: '1.1rem', sm: '1.25rem' },
+              }}
+            >
+              Input
+            </Typography>
+            <AnimatedTextField
+              multiline
+              rows={4}
+              fullWidth
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              sx={{ mb: 2 }}
+            />
+            <Typography
+              variant="h6"
+              gutterBottom
+              sx={{
+                color: muiTheme.palette.primary.main,
+                fontWeight: 600,
+                fontSize: { xs: '1.1rem', sm: '1.25rem' },
+              }}
+            >
+              Output
+            </Typography>
+            <OutputBox
+              error={Boolean(error)}
+              sx={{
+                minHeight: { xs: '200px', sm: '300px', md: '100%' },
+              }}
+            >
+              {error || output || 'No output'}
+            </OutputBox>
+          </StyledPaper>
+        </Grid>
+      </Grid>
+
+      <StyledDrawer
+        anchor="left"
+        open={drawerOpen}
+        onClose={() => setDrawerOpen(false)}
+      >
+        <List sx={{ width: 250 }}>
+          <ListItem>
+            <ListItemIcon>
+              <PeopleIcon sx={{ color: muiTheme.palette.primary.main }} />
+            </ListItemIcon>
+            <ListItemText
+              primary="Connected Users"
+              primaryTypographyProps={{
+                sx: {
+                  color: muiTheme.palette.primary.main,
+                  fontWeight: 600,
+                },
+              }}
+            />
+          </ListItem>
+          {users.map((user, index) => (
+            <Zoom
+              in
+              key={index}
+              style={{ transitionDelay: `${index * 100}ms` }}
+            >
+              <ListItem>
+                <ListItemText
+                  primary={user}
+                  sx={{
+                    '& .MuiListItemText-primary': {
+                      color: muiTheme.palette.text.secondary,
+                    },
+                  }}
+                />
+              </ListItem>
+            </Zoom>
+          ))}
+        </List>
+      </StyledDrawer>
+
+      <Snackbar
+        open={notification.show}
+        autoHideDuration={6000}
+        onClose={() => setNotification(prev => ({ ...prev, show: false }))}
+        TransitionComponent={Slide}
+        TransitionProps={{ direction: 'up' }}
+      >
+        <Alert
+          onClose={() => setNotification(prev => ({ ...prev, show: false }))}
+          severity={notification.severity}
+          sx={{
+            width: '100%',
+            backdropFilter: 'blur(10px)',
+            backgroundColor: 'rgba(45, 45, 59, 0.9)',
+          }}
+          elevation={6}
+          variant="filled"
+        >
+          {notification.message}
+        </Alert>
+      </Snackbar>
+    </Box>
+  );
+};
+
+export default CodeEditor;
