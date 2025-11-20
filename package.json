@@ -2,7 +2,6 @@
   "name": "client",
   "version": "0.1.0",
   "private": true,
-  "homepage": "https://abhigyansharma30.github.io/codeio-frontendt",
   "dependencies": {
     "@emotion/react": "^11.14.0",
     "@emotion/styled": "^11.14.1",
@@ -27,6 +26,7 @@
     "yjs": "^13.6.27"
   },
   "scripts": {
+    "prestart": "node -e \"require('fs').rmSync('build', { recursive: true, force: true })\"",
     "start": "react-scripts start",
     "build": "react-scripts build",
     "test": "react-scripts test",

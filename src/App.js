@@ -1,5 +1,5 @@
 import React from 'react';
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { HashRouter as Router , Routes , Route } from 'react-router-dom';
 import CollaborativeEditor from './components/CollaborativeEditor';
 import Auth from './components/Auth';
 import Home from './components/Home';
