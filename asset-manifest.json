@@ -1,15 +1,15 @@
 {
   "files": {
-    "main.css": "/codeio-frontendt/static/css/main.d19a27ab.css",
-    "main.js": "/codeio-frontendt/static/js/main.60357070.js",
-    "static/js/453.a3c1d153.chunk.js": "/codeio-frontendt/static/js/453.a3c1d153.chunk.js",
-    "index.html": "/codeio-frontendt/index.html",
-    "main.d19a27ab.css.map": "/codeio-frontendt/static/css/main.d19a27ab.css.map",
-    "main.60357070.js.map": "/codeio-frontendt/static/js/main.60357070.js.map",
-    "453.a3c1d153.chunk.js.map": "/codeio-frontendt/static/js/453.a3c1d153.chunk.js.map"
+    "main.css": "/static/css/main.d19a27ab.css",
+    "main.js": "/static/js/main.c5b41736.js",
+    "static/js/453.a3c1d153.chunk.js": "/static/js/453.a3c1d153.chunk.js",
+    "index.html": "/index.html",
+    "main.d19a27ab.css.map": "/static/css/main.d19a27ab.css.map",
+    "main.c5b41736.js.map": "/static/js/main.c5b41736.js.map",
+    "453.a3c1d153.chunk.js.map": "/static/js/453.a3c1d153.chunk.js.map"
   },
   "entrypoints": [
     "static/css/main.d19a27ab.css",
-    "static/js/main.60357070.js"
+    "static/js/main.c5b41736.js"
   ]
 }
