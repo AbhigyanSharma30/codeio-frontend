@@ -1,0 +1,15 @@
+{
+  "files": {
+    "main.css": "/AbhigyanSharma30/codeio-frontend.git/static/css/main.d19a27ab.css",
+    "main.js": "/AbhigyanSharma30/codeio-frontend.git/static/js/main.4dffa7c6.js",
+    "static/js/453.a3c1d153.chunk.js": "/AbhigyanSharma30/codeio-frontend.git/static/js/453.a3c1d153.chunk.js",
+    "index.html": "/AbhigyanSharma30/codeio-frontend.git/index.html",
+    "main.d19a27ab.css.map": "/AbhigyanSharma30/codeio-frontend.git/static/css/main.d19a27ab.css.map",
+    "main.4dffa7c6.js.map": "/AbhigyanSharma30/codeio-frontend.git/static/js/main.4dffa7c6.js.map",
+    "453.a3c1d153.chunk.js.map": "/AbhigyanSharma30/codeio-frontend.git/static/js/453.a3c1d153.chunk.js.map"
+  },
+  "entrypoints": [
+    "static/css/main.d19a27ab.css",
+    "static/js/main.4dffa7c6.js"
+  ]
+}
